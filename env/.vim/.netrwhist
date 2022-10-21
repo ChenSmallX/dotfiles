@@ -1,3 +1,5 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhistcnt =1
+let g:netrw_dirhistcnt =3
+let g:netrw_dirhist_3='/home/smallxeon/dotfiles'
+let g:netrw_dirhist_2='/home/smallxeon/dotfiles/dep'
 let g:netrw_dirhist_1='/Users/chenke/.npminstall_tarball'

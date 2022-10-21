@@ -1,0 +1,3 @@
+pane	0	0	1	:*	0	smallxeon@CatBearPC:~/dotfiles	:/home/smallxeon/dotfiles	1	zsh	:
+window	0	0	:zsh	1	:*	bd5d,211x54,0,0,0	:
+state	0	

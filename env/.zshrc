@@ -114,3 +114,32 @@ source $ZSH/oh-my-zsh.sh
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+alias wsl="wsl.exe"
+
+# wrap the git command to either run windows git or linux
+function git {
+  if isWinDir; then
+    git.exe "$@"
+  else
+    /usr/bin/git "$@"
+  fi
+}
+
+function code {
+  if isWinDir; then
+    cmd.exe /c code.cmd $(wslpath -w "$@")
+  else
+    "/mnt/c/Users/陈可/AppData/Local/Programs/Microsoft VS Code/bin/code" "$@"
+  fi
+}
+
+function open {
+  explorer.exe $(wslpath -w "$@")
+  return 0
+}
+
+alias start="open"
+alias vmfree="sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' && echo done!"
+alias iftop="sudo TERM=xterm iftop"
+
