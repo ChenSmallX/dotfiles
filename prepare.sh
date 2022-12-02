@@ -33,11 +33,12 @@ function softlink()
     src=$1
     dst=$2
 
+    rm -rf "${dst}"
     mkdir -p $(dirname ${dst})
-    if [ -e "${dst}" ]; then
-        echo "The $(basename ${dst}) is already exist, skip."
-        return
-    fi
+    # if [ -e "${dst}" ]; then
+    #     echo "The $(basename ${dst}) is already exist, skip."
+    #     return
+    # fi
     ln -s "${src}" "${dst}"
     echo "prepare $(basename ${dst}) succeed!"
 }
@@ -118,6 +119,8 @@ echo -n 'Fetch the dependencies...'
 sleep 0.2
 git submodule init
 git submodule update
+git submodule foreach git checkout -- .
+git submodule foreach git pull origin master
 echo ' Done!'
 echo ""
 

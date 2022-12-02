@@ -18,11 +18,12 @@ for file in $(ls -a "${SOURCE_DIR}" ); do
     src="${SOURCE_DIR}/${file}"
     dst="${TARGET_DIR}/${file}"
 
-    if [ -e ${dst} ]; then
-        echo "[$(basename ${dst})] is already exist, skip!"
-        sleep 0.2
-        continue
-    fi
+    rm -rf "${dst}"
+    # if [ -e ${dst} ]; then
+    #     echo "[$(basename ${dst})] is already exist, skip!"
+    #     sleep 0.2
+    #     continue
+    # fi
 
     ln -s "${src}" "${dst}"
     echo "Link the $(basename ${file}) succeed!"
