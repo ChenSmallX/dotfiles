@@ -7,6 +7,7 @@ fi
 
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
+export PATH="${HOME}/.local/bin:${PATH}"
 
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
@@ -115,9 +116,21 @@ source $ZSH/oh-my-zsh.sh
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
+# Check it is in Windows Subsystem Linux
+function isWsl {
+    uname -a | grep -E "[M|m]icrosoft" > /dev/null
+    if [ $? -eq 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+isWsl
+if [ $? -eq 0 ]; then # Start of isWsl, find the end if Wsl to search "End of isWsl"
+
 alias wsl="wsl.exe"
 
-# checks to see if we are in a windows or linux dir
+# Checks to see if we are in a windows path or a linux(WSL) path
 function isWinDir {
   case $PWD/ in
     /mnt/*) return $(true);;
@@ -125,29 +138,50 @@ function isWinDir {
   esac
 }
 
-# wrap the git command to either run windows git or linux
+# git command wrap
+# Determine whether to use git.exe in windows or git in linux(WSL)
+REAL_GIT=$(which git)
 function git {
   if isWinDir; then
     git.exe "$@"
   else
-    /usr/bin/git "$@"
+    "${REAL_GIT}" "$@"
   fi
 }
 
+# Vscode launch command wrap
+# Determine whether to use code.exe in windows or code in linux(WSL)
+REAL_CODE=$(which code)
 function code {
   if isWinDir; then
     cmd.exe /c code.cmd $(wslpath -w "$@")
   else
-    "/mnt/c/Users/陈可/AppData/Local/Programs/Microsoft VS Code/bin/code" "$@"
+    #"/mnt/c/Users/陈可/AppData/Local/Programs/Microsoft VS Code/bin/code" "$@"
+    "${REAL_CODE}" "$@"
   fi
 }
 
+# create command "open" and "start" to open 
+# a path in linux(WSL) by windows exploere.exe
+# usage:
+#     open <path>
+#     start <path>
+# eg. open .                                # open the dir
+# eg. open /home/yourname/.ssh/id_rsa.pub   # open the file by a software 
+#                                           #   which bind to this type
+# eg. start /etc/                           # open the dir
 function open {
   explorer.exe $(wslpath -w "$@")
   return 0
 }
-
 alias start="open"
+
+# recollect RAM in WSL2 vm.
 alias vmfree="sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' && echo done!"
 alias iftop="sudo TERM=xterm iftop"
+
+fi # End of isWsl
+
+# Golang
+export PATH=$PATH:/usr/local/go/bin
 
