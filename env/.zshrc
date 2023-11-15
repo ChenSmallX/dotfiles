@@ -182,6 +182,16 @@ alias iftop="sudo TERM=xterm iftop"
 
 fi # End of isWsl
 
+function gw {
+    if command -v route >> /dev/null; then
+        route -n | grep -E '^0' | awk '{print $2}'
+        return 0
+    else
+        echo "route command not exist, please check!"
+        return 1
+    fi
+}
+
 # Golang
 export PATH=$PATH:/usr/local/go/bin
 
