@@ -116,6 +116,48 @@ source $ZSH/oh-my-zsh.sh
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
+# #####
+# custom functions
+# ##### begin #####
+
+# get route ip and print to screen
+# almost use in proxy $(gw):port
+function gw {
+    if command -v route >> /dev/null; then
+        route -n | grep -E '^0' | awk '{print $2}'
+        return 0
+    else
+        echo "route command not exist, please check!"
+        return 1
+    fi
+}
+
+# get custom proxy port
+# use by create a file under the ~ folder which
+# contains the proxy port and named to '.proxy_port'
+function proxy_port {
+    local p_port=''
+
+    if [ -f ~/.proxy_port ]; then
+        # ~/.proxy_port file exist
+        p_port="$(cat ~/.proxy_port)"
+    else
+        echo "the proxy port flag file not exist, please edit it."
+        touch ~/.proxy_port
+        return 1
+    fi
+
+    if [ -z "${p_port}" ]; then
+        echo "the ~/.proxy_port file is empty, please edit it"
+        return 1
+    fi
+
+    echo "${p_port}"
+    return 0
+}
+
+alias proxy_addr="echo http://$(gw):$(proxy_port)"
+
 # Check it is in Windows Subsystem Linux
 function isWsl {
     uname -a | grep -E "[M|m]icrosoft" > /dev/null
@@ -126,71 +168,68 @@ function isWsl {
 }
 
 isWsl
-if [ $? -eq 0 ]; then # Start of isWsl, find the end if Wsl to search "End of isWsl"
+if [ $? -eq 0 ]; then
+# Start of isWsl, find the end if Wsl to search "End of isWsl"
+    alias wsl="wsl.exe"
 
-alias wsl="wsl.exe"
+    # Checks to see if we are in a windows path or a linux(WSL) path
+    function isWinDir {
+      case $PWD/ in
+        /mnt/*) return $(true);;
+        *) return $(false);;
+      esac
+    }
 
-# Checks to see if we are in a windows path or a linux(WSL) path
-function isWinDir {
-  case $PWD/ in
-    /mnt/*) return $(true);;
-    *) return $(false);;
-  esac
-}
+    # git command wrap
+    # Determine whether to use git.exe in windows or git in linux(WSL)
+    REAL_GIT=$(which git)
+    function git {
+      if isWinDir; then
+        git.exe "$@"
+      else
+        "${REAL_GIT}" "$@"
+      fi
+    }
 
-# git command wrap
-# Determine whether to use git.exe in windows or git in linux(WSL)
-REAL_GIT=$(which git)
-function git {
-  if isWinDir; then
-    git.exe "$@"
-  else
-    "${REAL_GIT}" "$@"
-  fi
-}
+    # Vscode launch command wrap
+    # Determine whether to use code.exe in windows or code in linux(WSL)
+    REAL_CODE=$(which code)
+    function code {
+      if isWinDir; then
+        cmd.exe /c code.cmd $(wslpath -w "$@")
+      else
+        #"/mnt/c/Users/陈可/AppData/Local/Programs/Microsoft VS Code/bin/code" "$@"
+        "${REAL_CODE}" "$@"
+      fi
+    }
 
-# Vscode launch command wrap
-# Determine whether to use code.exe in windows or code in linux(WSL)
-REAL_CODE=$(which code)
-function code {
-  if isWinDir; then
-    cmd.exe /c code.cmd $(wslpath -w "$@")
-  else
-    #"/mnt/c/Users/陈可/AppData/Local/Programs/Microsoft VS Code/bin/code" "$@"
-    "${REAL_CODE}" "$@"
-  fi
-}
+    # create command "open" and "start" to open
+    # a path in linux(WSL) by windows exploere.exe
+    # usage:
+    #     open <path>
+    #     start <path>
+    # eg. open .                                # open the dir
+    # eg. open /home/yourname/.ssh/id_rsa.pub   # open the file by a software
+    #                                           #   which bind to this type
+    # eg. start /etc/                           # open the dir
+    function open {
+      explorer.exe $(wslpath -w "$@")
+      return 0
+    }
+    alias start="open"
 
-# create command "open" and "start" to open 
-# a path in linux(WSL) by windows exploere.exe
-# usage:
-#     open <path>
-#     start <path>
-# eg. open .                                # open the dir
-# eg. open /home/yourname/.ssh/id_rsa.pub   # open the file by a software 
-#                                           #   which bind to this type
-# eg. start /etc/                           # open the dir
-function open {
-  explorer.exe $(wslpath -w "$@")
-  return 0
-}
-alias start="open"
+    # recollect RAM in WSL2 vm.
+    alias vmfree="sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' && echo done!"
+    alias iftop="sudo TERM=xterm iftop"
+    alias proxy="export http_proxy=$(proxy_addr); export https_port=$(proxy_addr)"
 
-# recollect RAM in WSL2 vm.
-alias vmfree="sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' && echo done!"
-alias iftop="sudo TERM=xterm iftop"
+# End of isWsl
+else
+# for common linux
+    alias proxy="export http_proxy=127.0.0.1:$(proxy_port); export https_port=127.0.0.1:$(proxy_port)"
+fi
 
-fi # End of isWsl
-
-function gw {
-    if command -v route >> /dev/null; then
-        route -n | grep -E '^0' | awk '{print $2}'
-        return 0
-    else
-        echo "route command not exist, please check!"
-        return 1
-    fi
-}
+alias unproxy="unset http_proxy https_proxy all_proxy"
 
 # Golang
 export PATH=$PATH:/usr/local/go/bin
