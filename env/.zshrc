@@ -1,3 +1,10 @@
+# oh-my-zsh debug config
+# if u want to debug the omz performance, uncommand this part
+# and search the TAG: PERF to find the pair
+#PS4=$'\\\011%D{%s%6.}\011%x\011%I\011%N\011%e\011'
+#exec 3>&2 2>/tmp/zshstart.$$.log
+#setopt xtrace prompt_subst
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -72,6 +79,9 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 
 # Would you like to use another custom folder than $ZSH/custom?
 # ZSH_CUSTOM=/path/to/new-custom-folder
+
+# zsh compile final file
+ZSH_COMPDUMP=$HOME/.cache/zsh/zcompdump-$ZSH_VERSION
 
 # Which plugins would you like to load?
 # Standard plugins can be found in $ZSH/plugins/
@@ -231,6 +241,14 @@ fi
 
 alias unproxy="unset http_proxy https_proxy all_proxy"
 
+# Golang
+export PATH=$PATH:/usr/local/go/bin
+
+# oh-my-zsh debug config tail
+# TAG: PERF
+# must keep this in the last of file
+#unsetopt xtrace
+#exec 2>&3 3>&-
 # Golang
 export PATH=$PATH:/usr/local/go/bin
 
