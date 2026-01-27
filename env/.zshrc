@@ -249,6 +249,4 @@ export PATH=$PATH:/usr/local/go/bin
 # must keep this in the last of file
 #unsetopt xtrace
 #exec 2>&3 3>&-
-# Golang
-export PATH=$PATH:/usr/local/go/bin
 
