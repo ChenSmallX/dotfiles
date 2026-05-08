@@ -226,11 +226,26 @@ if [ $? -eq 0 ]; then
 # End of isWsl
 else
 # for common linux
-    alias proxy="export http_proxy=127.0.0.1:$(proxy_port); export https_port=127.0.0.1:$(proxy_port)"
+    alias proxy="export http_proxy=127.0.0.1:$(proxy_port); export https_port=127.0.0.1:$(proxy_port); export use_proxy=yes"
 fi
 
-alias unproxy="unset http_proxy https_proxy all_proxy"
+alias unproxy="unset http_proxy https_proxy all_proxy use_proxy"
+alias ptcode="cd ~/codespace/pt-sites && code pt-sites.code-workspace && cd -"
 
 # Golang
 export PATH=$PATH:/usr/local/go/bin
+
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+function claude-glm() {
+    ANTHROPIC_AUTH_TOKEN=2f37512f032545b0866951f5a8b686db.c5sP2NgDcTgnpbj8 \
+    ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic \
+    ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.6 \
+    ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6 \
+    ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air \
+    claude "$@"
+}
 
