@@ -1,47 +1,50 @@
 # dotfiles
 
-This repository manages dotfiles by software module. Each module lives under
-`modules/<name>` and owns its config files plus platform-specific deployment
-scripts.
+一个按软件模块管理的 dotfiles 仓库。每个软件都有独立目录，配置文件和部署脚本都放在对应模块里，便于单独选择、预览和部署。
 
-## Layout
+## 📁 目录结构
 
-- `install.sh`: POSIX one-step deployment entrypoint for Linux and macOS.
-- `install.ps1`: PowerShell one-step deployment entrypoint for Windows.
-- `install.bat`: cmd wrapper for `install.ps1`.
-- `modules/<name>/files`: dotfiles owned by that module.
-- `modules/<name>/deploy.sh`: POSIX module deployment phases.
-- `modules/<name>/deploy.ps1`: PowerShell module deployment phases.
-- `scripts/lib.sh`: shared POSIX deployment helpers.
-- `scripts/Dotfiles.psm1`: shared PowerShell deployment helpers.
+- `install.sh`：Linux / macOS 的一键部署入口。
+- `install.ps1`：Windows PowerShell 的一键部署入口。
+- `install.bat`：Windows cmd 的包装入口，会调用 `install.ps1`。
+- `modules/<name>/files`：某个软件模块实际管理的配置文件。
+- `modules/<name>/deploy.sh`：该模块在 POSIX 终端下的部署脚本。
+- `modules/<name>/deploy.ps1`：该模块在 PowerShell 下的部署脚本。
+- `scripts/lib.sh`：POSIX 共享部署函数。
+- `scripts/Dotfiles.psm1`：PowerShell 共享部署函数。
 
-## Usage
+## 🚀 快速开始
 
-Linux and macOS:
+Linux / macOS：
 
 ```sh
 ./install.sh
 ```
 
-Windows PowerShell:
+Windows PowerShell：
 
 ```powershell
 .\install.ps1
 ```
 
-Windows cmd:
+Windows cmd：
 
 ```bat
 install.bat
 ```
 
-The interactive menu uses Space to select modules and Enter to confirm. Before
-deployment, the script prints the target home directory, backup directory, and
-the impact for every selected module. Existing targets are moved into
-`~/.dotfiles-backup/<timestamp>/` before replacement.
+## 🧭 交互式部署
 
-Scripts print Chinese prompts and logs by default. Add `--en` to use English
-output:
+默认部署入口会扫描 `modules` 下所有可部署模块，并进入交互式选择界面：
+
+- `Space`：选择或取消选择模块。
+- `Enter`：确认选择并继续。
+- 部署前会显示本次部署影响，包括目标 HOME、备份目录、将创建或替换的配置。
+- 现有目标会先移动到 `~/.dotfiles-backup/<timestamp>/`，再创建新链接或执行部署。
+
+## 🌏 语言
+
+脚本默认输出中文提示和日志。需要英文输出时添加 `--en`：
 
 ```sh
 ./install.sh --en
@@ -53,7 +56,9 @@ output:
 .\install.ps1 --en --dry-run
 ```
 
-For non-interactive deployment:
+## ⚙️ 常用命令
+
+部署所有模块，不进入选择界面：
 
 ```sh
 ./install.sh --all
@@ -63,7 +68,7 @@ For non-interactive deployment:
 .\install.ps1 --all
 ```
 
-For impact preview only, keep the interactive module picker and add `--dry-run`:
+只预览已选择模块的影响，不写入文件：
 
 ```sh
 ./install.sh --dry-run
@@ -73,7 +78,7 @@ For impact preview only, keep the interactive module picker and add `--dry-run`:
 .\install.ps1 --dry-run
 ```
 
-For previewing every module without the picker, combine `--all` and `--dry-run`:
+预览所有模块，不进入选择界面：
 
 ```sh
 ./install.sh --all --dry-run
@@ -83,7 +88,9 @@ For previewing every module without the picker, combine `--all` and `--dry-run`:
 .\install.ps1 --all --dry-run
 ```
 
-Help:
+## 🆘 查看帮助
+
+POSIX：
 
 ```sh
 ./install.sh --help
@@ -91,11 +98,42 @@ Help:
 modules/zsh/deploy.sh --help
 ```
 
+PowerShell / cmd：
+
 ```powershell
 .\install.ps1 --help
 .\install.bat /?
 .\modules\zsh\deploy.ps1 --help
 ```
 
-`prepare.sh` and `deploy.sh` are kept as compatibility wrappers. New usage
-should prefer `install.sh`, `install.ps1`, or `install.bat`.
+## 🧩 模块说明
+
+当前模块按软件或配置类别拆分，例如：
+
+- `bash`：Bash 配置。
+- `profile`：通用 shell profile 配置。
+- `pip`：pip 配置。
+- `tmux`：tmux 配置和插件目录。
+- `vim`：Vim 配置和插件目录。
+- `zsh`：zsh、oh-my-zsh、主题和插件配置。
+
+新增软件配置时，推荐创建 `modules/<software>/`，并把该软件相关内容集中放在这个目录下。
+
+## 🔁 兼容入口
+
+`prepare.sh` 和 `deploy.sh` 仍然保留，用于兼容旧习惯：
+
+- `prepare.sh`：兼容包装脚本，当前用于准备 zsh 相关依赖。
+- `deploy.sh`：兼容包装脚本，转发到新的 `install.sh`。
+
+新的日常使用方式推荐优先使用：
+
+```sh
+./install.sh
+```
+
+或在 Windows 上使用：
+
+```powershell
+.\install.ps1
+```
