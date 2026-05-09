@@ -23,7 +23,7 @@ Interactive selector:
   Left or h           Go to parent directory
   Enter               Confirm selected paths
 
-Selected local Git repositories are added as submodules under dep/.
+Selected local Git repositories are added as submodules under modules/<name>/dep/.
 Other files and directories are copied into modules/<name>/files with their HOME-relative paths preserved.
 "@ | Write-Host
     } else {
@@ -42,7 +42,7 @@ Other files and directories are copied into modules/<name>/files with their HOME
   左 或 h             返回父目录
   回车                确认已选择路径
 
-选中的本地 Git 仓库会作为 submodule 添加到 dep/。
+选中的本地 Git 仓库会作为 submodule 添加到 modules/<name>/dep/。
 其他文件和目录会按 HOME 相对路径复制到 modules/<name>/files。
 "@ | Write-Host
     }
@@ -143,7 +143,22 @@ function Select-ConfigPaths {
             32 {
                 if ($items[$cursor] -ne "..") {
                     $path = (Resolve-Path -LiteralPath $items[$cursor].FullName).Path
-                    if ($selected.ContainsKey($path)) { $selected.Remove($path) } else { $selected[$path] = $true }
+                    if ($selected.ContainsKey($path)) {
+                        $selected.Remove($path)
+                    } else {
+                        $hasAncestor = $false
+                        foreach ($existing in @($selected.Keys)) {
+                            if ($path.StartsWith($existing + [IO.Path]::DirectorySeparatorChar)) {
+                                $hasAncestor = $true
+                            }
+                            if ($existing.StartsWith($path + [IO.Path]::DirectorySeparatorChar)) {
+                                $selected.Remove($existing)
+                            }
+                        }
+                        if (-not $hasAncestor) {
+                            $selected[$path] = $true
+                        }
+                    }
                 }
             }
             37 {
@@ -178,11 +193,6 @@ function Select-ConfigPaths {
     }
 }
 
-function ConvertTo-PsSingleQuoted {
-    param([Parameter(Mandatory)] [string] $Value)
-    return "'" + $Value.Replace("'", "''") + "'"
-}
-
 $selectedPaths = @(Select-ConfigPaths)
 $fileTargets = @()
 $submoduleSources = @()
@@ -194,7 +204,7 @@ foreach ($path in $selectedPaths) {
     if (Test-GitRepoRoot $path) {
         $name = Split-Path -Leaf $path
         $dest = "dep/$name"
-        $destPath = Join-Path $Root $dest
+        $destPath = Join-Path $ModuleDir $dest
         if (Test-Path -LiteralPath $destPath) {
             throw (Get-DotfilesMessage "submodule 目标路径已存在：$dest" "submodule target already exists: $dest")
         }
@@ -202,10 +212,10 @@ foreach ($path in $selectedPaths) {
         $submoduleSources += $dest
         $submoduleTargets += $rel
         if ($DryRun) {
-            Write-DotfilesMessage "  将添加 submodule：$url -> $dest" "  would add submodule: $url -> $dest"
+            Write-DotfilesMessage "  将添加 submodule：$url -> modules/$ModuleName/$dest" "  would add submodule: $url -> modules/$ModuleName/$dest"
         } else {
-            & git -C $Root submodule add $url $dest
-            Write-DotfilesMessage "  已添加 submodule：$dest" "  added submodule: $dest"
+            & git -C $Root submodule add $url "modules/$ModuleName/$dest"
+            Write-DotfilesMessage "  已添加 submodule：modules/$ModuleName/$dest" "  added submodule: modules/$ModuleName/$dest"
         }
     } else {
         $fileTargets += $rel
@@ -228,125 +238,15 @@ if ($DryRun) {
 
 New-Item -ItemType Directory -Force -Path (Join-Path $ModuleDir "files") | Out-Null
 
-$shFileSources = ($fileTargets | ForEach-Object { "  " + '"' + '${MODULE_DIR}/files/' + $_ + '"' }) -join "`n"
-$shFileTargets = ($fileTargets | ForEach-Object { "  '$_'" }) -join "`n"
-$shSubSources = ($submoduleSources | ForEach-Object { "  " + '"' + '${DOTFILES_ROOT}/' + $_ + '"' }) -join "`n"
-$shSubTargets = ($submoduleTargets | ForEach-Object { "  '$_'" }) -join "`n"
-
-$deploySh = @"
-#!/usr/bin/env bash
-
-set -euo pipefail
-source "`$(cd "`$(dirname "`${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib.sh"
-if parse_language_arg "`${1:-}"; then shift; fi
-
-MODULE_DIR="`${DOTFILES_ROOT}/modules/$ModuleName"
-FILES_SOURCES=(
-$shFileSources
-)
-FILES_TARGETS=(
-$shFileTargets
-)
-SUBMODULE_SOURCES=(
-$shSubSources
-)
-SUBMODULE_TARGETS=(
-$shSubTargets
-)
-
-prepare_deps() {
-  if [ "`${#SUBMODULE_SOURCES[@]}" -gt 0 ]; then
-    msg_line "正在获取 submodule 依赖..." "Fetching submodule dependencies..."
-    git -C "`$DOTFILES_ROOT" submodule update --init --recursive
-  fi
-}
-
-describe_items() {
-  local i
-  for i in "`${!FILES_SOURCES[@]}"; do describe_link "`${FILES_SOURCES[`$i]}" "`${FILES_TARGETS[`$i]}"; done
-  for i in "`${!SUBMODULE_SOURCES[@]}"; do describe_link "`${SUBMODULE_SOURCES[`$i]}" "`${SUBMODULE_TARGETS[`$i]}"; done
-}
-
-deploy_items() {
-  local i
-  prepare_deps
-  for i in "`${!FILES_SOURCES[@]}"; do link_item "`${FILES_SOURCES[`$i]}" "`${FILES_TARGETS[`$i]}"; done
-  for i in "`${!SUBMODULE_SOURCES[@]}"; do link_item "`${SUBMODULE_SOURCES[`$i]}" "`${SUBMODULE_TARGETS[`$i]}"; done
-}
-
-verify_items() {
-  local i failed=0
-  for i in "`${!FILES_SOURCES[@]}"; do verify_link "`${FILES_SOURCES[`$i]}" "`${FILES_TARGETS[`$i]}" || failed=1; done
-  for i in "`${!SUBMODULE_SOURCES[@]}"; do verify_link "`${SUBMODULE_SOURCES[`$i]}" "`${SUBMODULE_TARGETS[`$i]}" || failed=1; done
-  return "`$failed"
-}
-
-case "`${1:-}" in
-  -h|--help|help) msg_line "用法：%s {describe|deploy|verify|help} [--en]" "Usage: %s {describe|deploy|verify|help} [--en]" "`$0" ;;
-  describe) describe_items ;;
-  deploy) deploy_items ;;
-  verify) verify_items ;;
-  *) if is_en; then die "usage: `$0 {describe|deploy|verify|help}"; else die "用法：`$0 {describe|deploy|verify|help}"; fi ;;
-esac
-"@
-Set-Content -LiteralPath (Join-Path $ModuleDir "deploy.sh") -Value $deploySh -Encoding UTF8
-
-$psFileItems = ($fileTargets | ForEach-Object {
-    "    @{ Source = (Join-Path `$ModuleDir " + (ConvertTo-PsSingleQuoted ("files\" + $_.Replace('/', '\'))) + "); Target = " + (ConvertTo-PsSingleQuoted $_) + " }"
-}) -join ",`n"
-$psSubItems = for ($i = 0; $i -lt $submoduleSources.Count; $i++) {
-    "    @{ Source = (Join-Path (Get-DotfilesRoot) " + (ConvertTo-PsSingleQuoted ($submoduleSources[$i].Replace('/', '\'))) + "); Target = " + (ConvertTo-PsSingleQuoted $submoduleTargets[$i]) + " }"
-}
-$psSubItems = $psSubItems -join ",`n"
-
-$deployPs1 = @"
-`$ErrorActionPreference = "Stop"
-Import-Module (Join-Path `$PSScriptRoot "..\..\scripts\Dotfiles.psm1") -Force
-`$ModuleDir = `$PSScriptRoot
-`$ScriptArgs = @(`$args)
-if (`$ScriptArgs.Count -gt 0 -and `$ScriptArgs[0] -eq "--en") {
-    Set-DotfilesEnglish
-    `$ScriptArgs = @(`$ScriptArgs | Select-Object -Skip 1)
-}
-
-`$FileItems = @(
-$psFileItems
-)
-`$SubmoduleItems = @(
-$psSubItems
-)
-
-function Show-Usage { Write-DotfilesMessage "用法：deploy.ps1 {describe|deploy|verify|help} [--en]" "Usage: deploy.ps1 {describe|deploy|verify|help} [--en]" }
-function Initialize-Submodules {
-    if (`$SubmoduleItems.Count -gt 0) {
-        Write-DotfilesMessage "正在获取 submodule 依赖..." "Fetching submodule dependencies..."
-        git -C (Get-DotfilesRoot) submodule update --init --recursive
+if ($submoduleSources.Count -gt 0) {
+    $manifest = Join-Path $ModuleDir "dep\manifest.tsv"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $manifest) | Out-Null
+    $lines = @("# source`t target")
+    for ($i = 0; $i -lt $submoduleSources.Count; $i++) {
+        $lines += "$($submoduleSources[$i])`t$($submoduleTargets[$i])"
     }
+    Set-Content -LiteralPath $manifest -Value $lines -Encoding UTF8
 }
-
-switch (`$ScriptArgs[0]) {
-    "-h" { Show-Usage }
-    "--help" { Show-Usage }
-    "help" { Show-Usage }
-    "describe" {
-        foreach (`$item in `$FileItems) { Show-DotfileImpact `$item.Source `$item.Target }
-        foreach (`$item in `$SubmoduleItems) { Show-DotfileImpact `$item.Source `$item.Target }
-    }
-    "deploy" {
-        Initialize-Submodules
-        foreach (`$item in `$FileItems) { Install-DotfileItem `$item.Source `$item.Target }
-        foreach (`$item in `$SubmoduleItems) { Install-DotfileItem `$item.Source `$item.Target }
-    }
-    "verify" {
-        `$failed = `$false
-        foreach (`$item in `$FileItems) { if (-not (Test-DotfileItem `$item.Source `$item.Target)) { `$failed = `$true } }
-        foreach (`$item in `$SubmoduleItems) { if (-not (Test-DotfileItem `$item.Source `$item.Target)) { `$failed = `$true } }
-        if (`$failed) { throw (Get-DotfilesMessage "验证失败" "verification failed") }
-    }
-    default { Show-Usage; throw (Get-DotfilesMessage "未知阶段：`$(`$ScriptArgs[0])" "unknown phase: `$(`$ScriptArgs[0])") }
-}
-"@
-Set-Content -LiteralPath (Join-Path $ModuleDir "deploy.ps1") -Value $deployPs1 -Encoding UTF8
 
 Write-DotfilesMessage "模块已创建：$ModuleDir" "Module created: $ModuleDir"
 Write-DotfilesMessage "可以运行 .\install.ps1 --dry-run 预览部署影响。" "Run .\install.ps1 --dry-run to preview deployment impact."

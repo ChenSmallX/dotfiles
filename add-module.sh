@@ -25,7 +25,7 @@ Interactive selector:
   Left or h           Go to parent directory
   Enter               Confirm selected paths
 
-Selected local Git repositories are added as submodules under dep/.
+Selected local Git repositories are added as submodules under modules/<name>/dep/.
 Other files and directories are copied into modules/<name>/files with their HOME-relative paths preserved.
 USAGE
   else
@@ -44,7 +44,7 @@ USAGE
   左 或 h             返回父目录
   回车                确认已选择路径
 
-选中的本地 Git 仓库会作为 submodule 添加到 dep/。
+选中的本地 Git 仓库会作为 submodule 添加到 modules/<name>/dep/。
 其他文件和目录会按 HOME 相对路径复制到 modules/<name>/files。
 USAGE
   fi
@@ -129,6 +129,18 @@ toggle_selected() {
   for item in "${SELECTED_PATHS[@]}"; do
     if [ "$item" = "$path" ]; then
       found=1
+    elif [ "$found" -eq 0 ]; then
+      case "$path" in
+        "$item"/*)
+          return 0
+          ;;
+      esac
+      case "$item" in
+        "$path"/*)
+          continue
+          ;;
+      esac
+      next+=("$item")
     else
       next+=("$item")
     fi
@@ -254,14 +266,6 @@ git_remote_url() {
   git -C "$path" config --get "remote.${remote}.url"
 }
 
-quote_sh() {
-  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
-}
-
-quote_ps() {
-  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
-}
-
 copy_config_item() {
   local source="$1"
   local rel="$2"
@@ -284,190 +288,32 @@ add_submodule_item() {
   dest="dep/${name}"
   url="$(git_remote_url "$source")" || die "$(msg "Git 仓库没有可用 remote：%s" "Git repository has no usable remote: %s" "$source")"
 
-  if [ -e "${ROOT}/${dest}" ]; then
+  if [ -e "${MODULE_DIR}/${dest}" ]; then
     die "$(msg "submodule 目标路径已存在：%s" "submodule target already exists: %s" "$dest")"
   fi
 
   SUBMODULE_SOURCES+=("$dest")
   SUBMODULE_TARGETS+=("$rel")
   if [ "$DRY_RUN" -eq 1 ]; then
-    msg_line "  将添加 submodule：%s -> %s" "  would add submodule: %s -> %s" "$url" "$dest"
+    msg_line "  将添加 submodule：%s -> modules/%s/%s" "  would add submodule: %s -> modules/%s/%s" "$url" "$MODULE_NAME" "$dest"
     return 0
   fi
-  git -C "$ROOT" submodule add "$url" "$dest"
-  msg_line "  已添加 submodule：%s" "  added submodule: %s" "$dest"
+  git -C "$ROOT" submodule add "$url" "modules/${MODULE_NAME}/${dest}"
+  msg_line "  已添加 submodule：modules/%s/%s" "  added submodule: modules/%s/%s" "$MODULE_NAME" "$dest"
 }
 
-generate_deploy_sh() {
-  local script="${MODULE_DIR}/deploy.sh"
-  {
-    cat <<'EOF'
-#!/usr/bin/env bash
-
-set -euo pipefail
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib.sh"
-if parse_language_arg "${1:-}"; then shift; fi
-
-MODULE_DIR="${DOTFILES_ROOT}/modules/__MODULE_NAME__"
-FILES_SOURCES=(
-EOF
-    local item
-    for item in "${FILE_TARGETS[@]}"; do
-      printf '  "%s"\n' "\${MODULE_DIR}/files/${item}"
-    done
-    cat <<'EOF'
-)
-FILES_TARGETS=(
-EOF
-    for item in "${FILE_TARGETS[@]}"; do
-      printf '  %s\n' "$(quote_sh "$item")"
-    done
-    cat <<'EOF'
-)
-SUBMODULE_SOURCES=(
-EOF
-    for item in "${SUBMODULE_SOURCES[@]}"; do
-      printf '  "%s"\n' "\${DOTFILES_ROOT}/${item}"
-    done
-    cat <<'EOF'
-)
-SUBMODULE_TARGETS=(
-EOF
-    for item in "${SUBMODULE_TARGETS[@]}"; do
-      printf '  %s\n' "$(quote_sh "$item")"
-    done
-    cat <<'EOF'
-)
-
-prepare_deps() {
-  if [ "${#SUBMODULE_SOURCES[@]}" -gt 0 ]; then
-    msg_line "正在获取 submodule 依赖..." "Fetching submodule dependencies..."
-    git -C "$DOTFILES_ROOT" submodule update --init --recursive
+write_dep_manifest() {
+  [ "${#SUBMODULE_SOURCES[@]}" -gt 0 ] || return 0
+  local manifest="${MODULE_DIR}/dep/manifest.tsv"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    return 0
   fi
-}
-
-describe_items() {
+  mkdir -p "$(dirname "$manifest")"
+  printf '# source\ttarget\n' > "$manifest"
   local i
-  for i in "${!FILES_SOURCES[@]}"; do
-    describe_link "${FILES_SOURCES[$i]}" "${FILES_TARGETS[$i]}"
-  done
   for i in "${!SUBMODULE_SOURCES[@]}"; do
-    describe_link "${SUBMODULE_SOURCES[$i]}" "${SUBMODULE_TARGETS[$i]}"
+    printf '%s\t%s\n' "${SUBMODULE_SOURCES[$i]}" "${SUBMODULE_TARGETS[$i]}" >> "$manifest"
   done
-}
-
-deploy_items() {
-  local i
-  prepare_deps
-  for i in "${!FILES_SOURCES[@]}"; do
-    link_item "${FILES_SOURCES[$i]}" "${FILES_TARGETS[$i]}"
-  done
-  for i in "${!SUBMODULE_SOURCES[@]}"; do
-    link_item "${SUBMODULE_SOURCES[$i]}" "${SUBMODULE_TARGETS[$i]}"
-  done
-}
-
-verify_items() {
-  local i failed=0
-  for i in "${!FILES_SOURCES[@]}"; do
-    verify_link "${FILES_SOURCES[$i]}" "${FILES_TARGETS[$i]}" || failed=1
-  done
-  for i in "${!SUBMODULE_SOURCES[@]}"; do
-    verify_link "${SUBMODULE_SOURCES[$i]}" "${SUBMODULE_TARGETS[$i]}" || failed=1
-  done
-  return "$failed"
-}
-
-case "${1:-}" in
-  -h|--help|help)
-    msg_line "用法：%s {describe|deploy|verify|help} [--en]" "Usage: %s {describe|deploy|verify|help} [--en]" "$0"
-    ;;
-  describe) describe_items ;;
-  deploy) deploy_items ;;
-  verify) verify_items ;;
-  *)
-    if is_en; then die "usage: $0 {describe|deploy|verify|help}"; else die "用法：$0 {describe|deploy|verify|help}"; fi
-    ;;
-esac
-EOF
-  } | sed "s/__MODULE_NAME__/${MODULE_NAME}/g" > "$script"
-  chmod +x "$script"
-}
-
-generate_deploy_ps1() {
-  local script="${MODULE_DIR}/deploy.ps1"
-  {
-    cat <<'EOF'
-$ErrorActionPreference = "Stop"
-Import-Module (Join-Path $PSScriptRoot "..\..\scripts\Dotfiles.psm1") -Force
-$ModuleDir = $PSScriptRoot
-$ScriptArgs = @($args)
-if ($ScriptArgs.Count -gt 0 -and $ScriptArgs[0] -eq "--en") {
-    Set-DotfilesEnglish
-    $ScriptArgs = @($ScriptArgs | Select-Object -Skip 1)
-}
-
-$FileItems = @(
-EOF
-    local item first=1
-    for item in "${FILE_TARGETS[@]}"; do
-      [ "$first" -eq 0 ] && printf ',\n'
-      printf '    @{ Source = (Join-Path $ModuleDir %s); Target = %s }' "$(quote_ps "files\\${item//\//\\}")" "$(quote_ps "$item")"
-      first=0
-    done
-    printf '\n'
-    cat <<'EOF'
-)
-$SubmoduleItems = @(
-EOF
-    first=1
-    local idx
-    for idx in "${!SUBMODULE_SOURCES[@]}"; do
-      [ "$first" -eq 0 ] && printf ',\n'
-      printf '    @{ Source = (Join-Path (Get-DotfilesRoot) %s); Target = %s }' "$(quote_ps "${SUBMODULE_SOURCES[$idx]//\//\\}")" "$(quote_ps "${SUBMODULE_TARGETS[$idx]}")"
-      first=0
-    done
-    printf '\n'
-    cat <<'EOF'
-)
-
-function Show-Usage {
-    Write-DotfilesMessage "用法：deploy.ps1 {describe|deploy|verify|help} [--en]" "Usage: deploy.ps1 {describe|deploy|verify|help} [--en]"
-}
-
-function Initialize-Submodules {
-    if ($SubmoduleItems.Count -gt 0) {
-        Write-DotfilesMessage "正在获取 submodule 依赖..." "Fetching submodule dependencies..."
-        git -C (Get-DotfilesRoot) submodule update --init --recursive
-    }
-}
-
-switch ($ScriptArgs[0]) {
-    "-h" { Show-Usage }
-    "--help" { Show-Usage }
-    "help" { Show-Usage }
-    "describe" {
-        foreach ($item in $FileItems) { Show-DotfileImpact $item.Source $item.Target }
-        foreach ($item in $SubmoduleItems) { Show-DotfileImpact $item.Source $item.Target }
-    }
-    "deploy" {
-        Initialize-Submodules
-        foreach ($item in $FileItems) { Install-DotfileItem $item.Source $item.Target }
-        foreach ($item in $SubmoduleItems) { Install-DotfileItem $item.Source $item.Target }
-    }
-    "verify" {
-        $failed = $false
-        foreach ($item in $FileItems) { if (-not (Test-DotfileItem $item.Source $item.Target)) { $failed = $true } }
-        foreach ($item in $SubmoduleItems) { if (-not (Test-DotfileItem $item.Source $item.Target)) { $failed = $true } }
-        if ($failed) { throw (Get-DotfilesMessage "验证失败" "verification failed") }
-    }
-    default {
-        Show-Usage
-        throw (Get-DotfilesMessage "未知阶段：$($ScriptArgs[0])" "unknown phase: $($ScriptArgs[0])")
-    }
-}
-EOF
-  } > "$script"
 }
 
 prompt_module_name
@@ -499,8 +345,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 mkdir -p "${MODULE_DIR}/files"
-generate_deploy_sh
-generate_deploy_ps1
+write_dep_manifest
 
 msg_line "模块已创建：%s" "Module created: %s" "$MODULE_DIR"
 msg_line "可以运行 ./install.sh --dry-run 预览部署影响。" "Run ./install.sh --dry-run to preview deployment impact."

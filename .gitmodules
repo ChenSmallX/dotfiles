@@ -1,15 +1,15 @@
-[submodule "dep/.oh-my-zsh"]
-	path = dep/.oh-my-zsh
+[submodule "modules/zsh/dep/oh-my-zsh"]
+	path = modules/zsh/dep/oh-my-zsh
 	url = https://github.com/ohmyzsh/ohmyzsh.git
-[submodule "dep/powerlevel10k"]
-	path = dep/powerlevel10k
+[submodule "modules/zsh/dep/powerlevel10k"]
+	path = modules/zsh/dep/powerlevel10k
 	url = https://github.com/romkatv/powerlevel10k.git
-[submodule "dep/zsh-completions"]
-	path = dep/zsh-completions
+[submodule "modules/zsh/dep/zsh-completions"]
+	path = modules/zsh/dep/zsh-completions
 	url = https://github.com/zsh-users/zsh-completions.git
-[submodule "dep/zsh-syntax-highlighting"]
-	path = dep/zsh-syntax-highlighting
+[submodule "modules/zsh/dep/zsh-syntax-highlighting"]
+	path = modules/zsh/dep/zsh-syntax-highlighting
 	url = https://github.com/zsh-users/zsh-syntax-highlighting.git
-[submodule "dep/zsh-autosuggestions"]
-	path = dep/zsh-autosuggestions
+[submodule "modules/zsh/dep/zsh-autosuggestions"]
+	path = modules/zsh/dep/zsh-autosuggestions
 	url = https://github.com/zsh-users/zsh-autosuggestions.git

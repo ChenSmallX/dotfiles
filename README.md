@@ -1,6 +1,6 @@
 # dotfiles
 
-一个按软件模块管理的 dotfiles 仓库。每个软件都有独立目录，配置文件和部署脚本都放在对应模块里，便于单独选择、预览和部署。
+一个按软件模块管理的 dotfiles 仓库。每个软件都有独立目录，配置文件和依赖都放在对应模块里，便于单独选择、预览和部署。
 
 ## 📁 目录结构
 
@@ -10,9 +10,9 @@
 - `add-module.sh`：Linux / macOS 的新增模块入口。
 - `add-module.ps1`：Windows PowerShell 的新增模块入口。
 - `add-module.bat`：Windows cmd 的新增模块包装入口。
-- `modules/<name>/files`：某个软件模块实际管理的配置文件。
-- `modules/<name>/deploy.sh`：该模块在 POSIX 终端下的部署脚本。
-- `modules/<name>/deploy.ps1`：该模块在 PowerShell 下的部署脚本。
+- `modules/<name>/files`：按 `$HOME` 相对路径保存的配置文件。
+- `modules/<name>/dep`：该模块私有的 Git submodule 依赖。
+- `modules/<name>/dep/manifest.tsv`：显式声明依赖部署顺序和目标路径。
 - `scripts/lib.sh`：POSIX 共享部署函数。
 - `scripts/Dotfiles.psm1`：PowerShell 共享部署函数。
 
@@ -44,6 +44,7 @@ install.bat
 - `Enter`：确认选择并继续。
 - 部署前会显示本次部署影响，包括目标 HOME、备份目录、将创建或替换的配置。
 - 现有目标会先移动到 `~/.dotfiles-backup/<timestamp>/`，再创建新链接或执行部署。
+- `files` 下的配置会按 `$HOME` 相对路径部署；`dep` 下的依赖会按 `manifest.tsv` 的顺序部署。
 
 ## 🌏 语言
 
@@ -91,6 +92,18 @@ install.bat
 .\install.ps1 --all --dry-run
 ```
 
+强制重新创建已部署链接：
+
+```sh
+./install.sh --force-relink
+./install.sh --all --force-relink
+```
+
+```powershell
+.\install.ps1 --force-relink
+.\install.ps1 --all --force-relink
+```
+
 ## 🆘 查看帮助
 
 POSIX：
@@ -99,7 +112,6 @@ POSIX：
 ./install.sh --help
 ./add-module.sh --help
 ./prepare.sh --help
-modules/zsh/deploy.sh --help
 ```
 
 PowerShell / cmd：
@@ -109,7 +121,6 @@ PowerShell / cmd：
 .\add-module.ps1 --help
 .\add-module.bat /?
 .\install.bat /?
-.\modules\zsh\deploy.ps1 --help
 ```
 
 ## 🧩 模块说明
@@ -124,6 +135,39 @@ PowerShell / cmd：
 - `zsh`：zsh、oh-my-zsh、主题和插件配置。
 
 新增软件配置时，推荐创建 `modules/<software>/`，并把该软件相关内容集中放在这个目录下。
+
+## 🧱 模块结构
+
+每个模块遵循同一套约定，不需要为每个软件单独维护部署逻辑：
+
+```text
+modules/<name>/
+  files/
+  dep/
+    manifest.tsv
+```
+
+`files/` 目录按 `$HOME` 相对路径保存配置。例如：
+
+```text
+modules/nvim/files/.config/nvim
+```
+
+部署目标就是：
+
+```text
+~/.config/nvim
+```
+
+如果模块包含 Git submodule 依赖，则放在该模块自己的 `dep/` 目录下，并通过 `manifest.tsv` 声明部署顺序和目标路径。格式为制表符分隔：
+
+```text
+# source	target
+dep/oh-my-zsh	.oh-my-zsh
+dep/powerlevel10k	.oh-my-zsh/custom/themes/powerlevel10k
+```
+
+部署器会先初始化该模块的 submodule，再按 manifest 行顺序创建链接。
 
 ## ➕ 新增模块
 
@@ -158,7 +202,7 @@ add-module.bat
 脚本会按路径类型自动处理：
 
 - 普通文件或目录：按 HOME 相对路径复制到 `modules/<name>/files`。
-- 本地 Git 仓库目录：读取该仓库 remote，并作为 submodule 添加到根目录 `dep/`。
+- 本地 Git 仓库目录：读取该仓库 remote，并作为 submodule 添加到 `modules/<name>/dep/`，同时写入 `manifest.tsv`。
 
 例如选择 `~/.config/nvim` 时，会保存为：
 
@@ -192,7 +236,7 @@ modules/nvim/files/.config/nvim
 
 `prepare.sh` 和 `deploy.sh` 仍然保留，用于兼容旧习惯：
 
-- `prepare.sh`：兼容包装脚本，当前用于准备 zsh 相关依赖。
+- `prepare.sh`：兼容包装脚本，当前用于初始化 zsh 模块的 submodule 依赖。
 - `deploy.sh`：兼容包装脚本，转发到新的 `install.sh`。
 
 新的日常使用方式推荐优先使用：

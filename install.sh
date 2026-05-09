@@ -14,6 +14,8 @@ Usage:
   ./install.sh --dry-run   Preview selected module impact without changing files
   ./install.sh --all --dry-run
                            Preview all module impact without changing files
+  ./install.sh --force-relink
+                           Recreate links even when they already point to this repo
   ./install.sh --en        Output English prompts and logs
   ./install.sh -h|--help   Show this help
 
@@ -22,6 +24,7 @@ Environment:
   DOTFILES_HOME            Override deployment home directory
   DOTFILES_BACKUP_DIR      Override backup directory
   DOTFILES_DRY_RUN=1       Preview changes without writing
+  DOTFILES_FORCE_RELINK=1  Recreate already deployed links
 USAGE
   else
     cat <<'USAGE'
@@ -31,6 +34,8 @@ USAGE
   ./install.sh --dry-run   仅预览已选择模块的影响，不修改文件
   ./install.sh --all --dry-run
                            仅预览所有模块影响，不修改文件
+  ./install.sh --force-relink
+                           即使配置已链接到本仓库，也强制重新创建链接
   ./install.sh --en        使用英文提示和日志
   ./install.sh -h|--help   显示此帮助
 
@@ -39,6 +44,7 @@ USAGE
   DOTFILES_HOME            覆盖部署目标 HOME 目录
   DOTFILES_BACKUP_DIR      覆盖备份目录
   DOTFILES_DRY_RUN=1       仅预览，不写入
+  DOTFILES_FORCE_RELINK=1  强制重建已部署链接
 USAGE
   fi
 }
@@ -47,7 +53,7 @@ list_modules() {
   local module
   for module in "${ROOT}"/modules/*; do
     [ -d "$module" ] || continue
-    [ -x "$module/deploy.sh" ] || continue
+    [ -d "$module/files" ] || [ -f "$module/dep/manifest.tsv" ] || continue
     basename "$module"
   done | sort
 }
@@ -145,6 +151,9 @@ main() {
       --dry-run)
         export DOTFILES_DRY_RUN=1
         ;;
+      --force-relink)
+        export DOTFILES_FORCE_RELINK=1
+        ;;
       --en)
         DOTFILES_LANG="en"
         export DOTFILES_LANG
@@ -175,7 +184,7 @@ main() {
       die "未找到可部署模块"
     fi
   fi
-  export DOTFILES_HOME DOTFILES_BACKUP_DIR DOTFILES_DRY_RUN
+  export DOTFILES_HOME DOTFILES_BACKUP_DIR DOTFILES_DRY_RUN DOTFILES_FORCE_RELINK
 
   selected=()
   if [ "$mode" = "all" ]; then

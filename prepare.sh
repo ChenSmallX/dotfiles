@@ -9,12 +9,12 @@ usage() {
   if is_en; then
     cat <<'USAGE'
 Usage:
-  ./prepare.sh             Prepare zsh dependencies
+  ./prepare.sh             Prepare module submodule dependencies
   ./prepare.sh --en        Output English prompts and logs
   ./prepare.sh -h|--help   Show this help
 
-This compatibility wrapper runs:
-  ./modules/zsh/deploy.sh prepare
+This compatibility wrapper initializes:
+  modules/zsh/dep
 
 For the new one-step interactive deployment, use:
   ./install.sh
@@ -22,12 +22,12 @@ USAGE
   else
     cat <<'USAGE'
 用法：
-  ./prepare.sh             准备 zsh 依赖
+  ./prepare.sh             准备模块 submodule 依赖
   ./prepare.sh --en        使用英文提示和日志
   ./prepare.sh -h|--help   显示此帮助
 
-这是兼容包装脚本，会执行：
-  ./modules/zsh/deploy.sh prepare
+这是兼容包装脚本，会初始化：
+  modules/zsh/dep
 
 新的单步交互式部署请使用：
   ./install.sh
@@ -70,4 +70,4 @@ msg_line "prepare.sh 保留为兼容包装脚本。" "prepare.sh is kept as a co
 msg_line "新的单步交互式部署请使用 ./install.sh。" "Use ./install.sh for the new interactive one-step deployment."
 echo ""
 
-exec "${ROOT}/modules/zsh/deploy.sh" prepare
+update_module_submodules "${ROOT}/modules/zsh"

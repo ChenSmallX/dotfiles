@@ -12,6 +12,8 @@ Usage:
   .\install.ps1 --dry-run   Preview selected module impact without changing files
   .\install.ps1 --all --dry-run
                             Preview all module impact without changing files
+  .\install.ps1 --force-relink
+                            Recreate links even when they already point to this repo
   .\install.ps1 --en        Output English prompts and logs
   .\install.ps1 -h|--help   Show this help
 
@@ -20,6 +22,7 @@ Environment:
   DOTFILES_HOME             Override deployment home directory
   DOTFILES_BACKUP_DIR       Override backup directory
   DOTFILES_DRY_RUN=1        Preview changes without writing
+  DOTFILES_FORCE_RELINK=1   Recreate already deployed links
 "@ | Write-Host
     } else {
         @"
@@ -29,6 +32,8 @@ Environment:
   .\install.ps1 --dry-run   仅预览已选择模块的影响，不修改文件
   .\install.ps1 --all --dry-run
                             仅预览所有模块影响，不修改文件
+  .\install.ps1 --force-relink
+                            即使配置已链接到本仓库，也强制重新创建链接
   .\install.ps1 --en        使用英文提示和日志
   .\install.ps1 -h|--help   显示此帮助
 
@@ -37,6 +42,7 @@ Environment:
   DOTFILES_HOME             覆盖部署目标 HOME 目录
   DOTFILES_BACKUP_DIR       覆盖备份目录
   DOTFILES_DRY_RUN=1        仅预览，不写入
+  DOTFILES_FORCE_RELINK=1   强制重建已部署链接
 "@ | Write-Host
     }
 }
@@ -53,6 +59,7 @@ foreach ($arg in $args) {
     switch ($arg) {
         "--all" { $DeployAll = $true }
         "--dry-run" { $DryRun = $true; $env:DOTFILES_DRY_RUN = "1" }
+        "--force-relink" { $env:DOTFILES_FORCE_RELINK = "1" }
         "--en" { Set-DotfilesEnglish }
         "-h" { Show-Usage; exit 0 }
         "--help" { Show-Usage; exit 0 }
@@ -70,7 +77,10 @@ if (-not $env:DOTFILES_HOME) {
 
 function Get-Modules {
     Get-ChildItem -Directory (Join-Path $Root "modules") |
-        Where-Object { Test-Path (Join-Path $_.FullName "deploy.ps1") } |
+        Where-Object {
+            (Test-Path (Join-Path $_.FullName "files")) -or
+            (Test-Path (Join-Path $_.FullName "dep\manifest.tsv"))
+        } |
         Sort-Object Name
 }
 
@@ -104,7 +114,7 @@ while ($true) {
 
 $modules = @(Get-Modules)
 if ($modules.Count -eq 0) {
-    throw (Get-DotfilesMessage "未找到可部署的 PowerShell 模块。" "No deployable PowerShell modules found.")
+    throw (Get-DotfilesMessage "未找到可部署模块。" "No deployable modules found.")
 }
 
 $selected = if ($DeployAll) { $modules } else { Select-Modules $modules }
@@ -119,7 +129,7 @@ Write-DotfilesMessage "  备份：$(Get-DotfilesBackupDir)" "  backup: $(Get-Dot
 foreach ($module in $selected) {
     Write-Host ""
     Write-Host "[$($module.Name)]"
-    & (Join-Path $module.FullName "deploy.ps1") describe
+    Invoke-DotfilesModulePhase $module.FullName describe
 }
 
 Write-Host ""
@@ -133,15 +143,23 @@ Read-Host (Get-DotfilesMessage "按回车开始部署，或按 Ctrl-C 取消" "P
 foreach ($module in $selected) {
     Write-Host ""
     Write-DotfilesMessage "正在部署 $($module.Name)..." "Deploying $($module.Name)..."
-    & (Join-Path $module.FullName "deploy.ps1") deploy
+    Invoke-DotfilesModulePhase $module.FullName deploy
 }
 
 Write-Host ""
 Write-DotfilesMessage "验证结果：" "Verification:"
+$failed = $false
 foreach ($module in $selected) {
     Write-Host "[$($module.Name)]"
-    & (Join-Path $module.FullName "deploy.ps1") verify
+    try {
+        Invoke-DotfilesModulePhase $module.FullName verify
+    } catch {
+        $failed = $true
+    }
 }
 
 Write-Host ""
+if ($failed) {
+    throw (Get-DotfilesMessage "部署已完成，但存在验证失败" "Deployment completed with verification failures.")
+}
 Write-DotfilesMessage "部署完成。" "Deployment completed."

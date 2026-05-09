@@ -7,6 +7,7 @@ DOTFILES_HOME="${DOTFILES_HOME:-$HOME}"
 DOTFILES_BACKUP_DIR="${DOTFILES_BACKUP_DIR:-${DOTFILES_HOME}/.dotfiles-backup/$(date +%Y%m%d%H%M%S)}"
 DOTFILES_DRY_RUN="${DOTFILES_DRY_RUN:-0}"
 DOTFILES_LANG="${DOTFILES_LANG:-zh}"
+DOTFILES_FORCE_RELINK="${DOTFILES_FORCE_RELINK:-0}"
 
 log() {
   printf '%s\n' "$*"
@@ -114,7 +115,7 @@ ensure_tools() {
 
 backup_existing_target() {
   local target="$1"
-  local rel="${target#"$DOTFILES_HOME"/}"
+  local rel="${2:-${target#"$DOTFILES_HOME"/}}"
   local backup="${DOTFILES_BACKUP_DIR}/${rel}"
 
   if [ "$DOTFILES_DRY_RUN" = "1" ]; then
@@ -127,11 +128,45 @@ backup_existing_target() {
   msg_line "  已备份：%s -> %s" "  backed up: %s -> %s" "$target" "$backup"
 }
 
+ensure_target_parent_dirs() {
+  local target_rel="$1"
+  local parent_rel="${target_rel%/*}"
+  [ "$parent_rel" != "$target_rel" ] || return 0
+
+  local part current_rel current_path
+  local -a parts
+  IFS='/' read -r -a parts <<< "$parent_rel"
+  current_rel=""
+  for part in "${parts[@]}"; do
+    [ -n "$part" ] || continue
+    if [ -n "$current_rel" ]; then
+      current_rel="${current_rel}/${part}"
+    else
+      current_rel="$part"
+    fi
+    current_path="${DOTFILES_HOME}/${current_rel}"
+
+    if [ -L "$current_path" ]; then
+      backup_existing_target "$current_path" "$current_rel"
+      [ "$DOTFILES_DRY_RUN" = "1" ] || mkdir -p "$current_path"
+    elif [ -e "$current_path" ] && [ ! -d "$current_path" ]; then
+      backup_existing_target "$current_path" "$current_rel"
+      [ "$DOTFILES_DRY_RUN" = "1" ] || mkdir -p "$current_path"
+    fi
+  done
+}
+
 link_item() {
   local source="$1"
   local target_rel="$2"
   local target="${DOTFILES_HOME}/${target_rel}"
+  link_item_at "$source" "$target_rel" "$target"
+}
 
+link_item_at() {
+  local source="$1"
+  local target_rel="$2"
+  local target="$3"
   if [ ! -e "$source" ]; then
     if is_en; then
       die "source does not exist: ${source}"
@@ -140,16 +175,20 @@ link_item() {
     fi
   fi
 
+  if [ "$target" = "${DOTFILES_HOME}/${target_rel}" ]; then
+    ensure_target_parent_dirs "$target_rel"
+  fi
+
   if [ -L "$target" ]; then
     local current
     current="$(readlink "$target")"
-    if [ "$current" = "$source" ]; then
+    if [ "$current" = "$source" ] && [ "$DOTFILES_FORCE_RELINK" != "1" ]; then
       msg_line "  无需变更：%s" "  unchanged: %s" "$target_rel"
       return 0
     fi
-    backup_existing_target "$target"
+    backup_existing_target "$target" "$target_rel"
   elif [ -e "$target" ]; then
-    backup_existing_target "$target"
+    backup_existing_target "$target" "$target_rel"
   fi
 
   if [ "$DOTFILES_DRY_RUN" = "1" ]; then
@@ -166,12 +205,20 @@ describe_link() {
   local source="$1"
   local target_rel="$2"
   local target="${DOTFILES_HOME}/${target_rel}"
+  describe_link_at "$source" "$target_rel" "$target"
+}
 
+describe_link_at() {
+  local source="$1"
+  local target_rel="$2"
+  local target="$3"
   if [ -L "$target" ]; then
     local current
     current="$(readlink "$target")"
-    if [ "$current" = "$source" ]; then
+    if [ "$current" = "$source" ] && [ "$DOTFILES_FORCE_RELINK" != "1" ]; then
       msg_line "  - %s：已链接" "  - %s: already linked" "$target_rel"
+    elif [ "$current" = "$source" ]; then
+      msg_line "  - %s：强制重新链接，先备份现有链接" "  - %s: force relink, backup existing symlink first" "$target_rel"
     else
       msg_line "  - %s：替换现有符号链接，先备份" "  - %s: replace existing symlink, backup first" "$target_rel"
     fi
@@ -186,7 +233,13 @@ verify_link() {
   local source="$1"
   local target_rel="$2"
   local target="${DOTFILES_HOME}/${target_rel}"
+  verify_link_at "$source" "$target_rel" "$target"
+}
 
+verify_link_at() {
+  local source="$1"
+  local target_rel="$2"
+  local target="$3"
   if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
     msg_line "  [成功] %s" "  [OK] %s" "$target_rel"
     return 0
@@ -196,17 +249,228 @@ verify_link() {
   return 1
 }
 
+module_rel_path() {
+  local path="$1"
+  printf '%s\n' "${path#"$DOTFILES_ROOT"/}"
+}
+
+list_dir_names() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  command ls -A "$dir" | sort
+}
+
+module_file_root_for() {
+  local path="$1"
+  local rel="$2"
+
+  if [ ! -d "$path" ] || [ -L "$path" ]; then
+    printf '%s\n' "$rel"
+    return 0
+  fi
+
+  local entries=()
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] && entries+=("$entry")
+  done < <(list_dir_names "$path")
+
+  if [ "${#entries[@]}" -eq 0 ]; then
+    printf '%s\n' "$rel"
+    return 0
+  fi
+
+  local dirs=()
+  local has_file=0
+  for entry in "${entries[@]}"; do
+    if [ -d "${path}/${entry}" ] && [ ! -L "${path}/${entry}" ]; then
+      dirs+=("$entry")
+    else
+      has_file=1
+    fi
+  done
+
+  if [ "$has_file" -eq 1 ]; then
+    printf '%s\n' "$rel"
+  elif [ "${#dirs[@]}" -eq 1 ]; then
+    module_file_root_for "${path}/${dirs[0]}" "${rel}/${dirs[0]}"
+  else
+    for entry in "${dirs[@]}"; do
+      module_file_root_for "${path}/${entry}" "${rel}/${entry}"
+    done
+  fi
+}
+
+list_module_file_roots() {
+  local module_dir="$1"
+  local files_dir="${module_dir}/files"
+  [ -d "$files_dir" ] || return 0
+
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    module_file_root_for "${files_dir}/${entry}" "$entry"
+  done < <(list_dir_names "$files_dir")
+}
+
+module_dep_manifest() {
+  local module_dir="$1"
+  local manifest="${module_dir}/dep/manifest.tsv"
+  [ -f "$manifest" ] && printf '%s\n' "$manifest"
+}
+
+module_has_deps() {
+  local module_dir="$1"
+  local manifest
+  manifest="$(module_dep_manifest "$module_dir" || true)"
+  [ -n "$manifest" ]
+}
+
+update_module_submodules() {
+  local module_dir="$1"
+  module_has_deps "$module_dir" || return 0
+  local dep_dir="${module_dir}/dep"
+  local dep_rel
+  dep_rel="$(module_rel_path "$dep_dir")"
+
+  if ! git -C "$DOTFILES_ROOT" ls-files --stage -- "$dep_rel" | grep -q '160000'; then
+    if [ -d "$dep_dir" ]; then
+      msg_line "模块依赖目录已存在，跳过 submodule 初始化。" "Module dependency directory already exists; skipping submodule initialization."
+      return 0
+    fi
+  fi
+
+  msg_line "正在获取模块 submodule 依赖..." "Fetching module submodule dependencies..."
+  git -C "$DOTFILES_ROOT" submodule update --init --recursive -- "$dep_rel"
+}
+
+for_each_manifest_dep() {
+  local module_dir="$1"
+  local callback="$2"
+  local manifest
+  manifest="$(module_dep_manifest "$module_dir" || true)"
+  [ -n "$manifest" ] || return 0
+
+  local sources=()
+  local targets=()
+  local source target rest resolved_source resolved_target prefix suffix i
+  while IFS=$'\t' read -r source target rest || [ -n "$source" ]; do
+    case "$source" in ''|\#*) continue ;; esac
+    [ -n "${target:-}" ] || die "$(msg "dep manifest 缺少目标路径：%s" "dep manifest is missing target path: %s" "$manifest")"
+
+    resolved_source="${module_dir}/${source}"
+    resolved_target="${DOTFILES_HOME}/${target}"
+    for i in "${!targets[@]}"; do
+      prefix="${targets[$i]}"
+      case "$target" in
+        "$prefix"/*)
+          suffix="${target#"$prefix"/}"
+          resolved_target="${sources[$i]}/${suffix}"
+          ;;
+      esac
+    done
+
+    "$callback" "$resolved_source" "$target" "$resolved_target"
+    sources+=("$resolved_source")
+    targets+=("$target")
+  done < "$manifest"
+}
+
+describe_module_file() {
+  describe_link_at "$1" "$2" "$3"
+}
+
+deploy_module_file() {
+  link_item_at "$1" "$2" "$3"
+}
+
+verify_module_file() {
+  verify_link_at "$1" "$2" "$3"
+}
+
+describe_dotfiles_module() {
+  local module_dir="$1"
+  local files_dir="${module_dir}/files"
+  local rel
+  while IFS= read -r rel; do
+    describe_link "${files_dir}/${rel}" "$rel"
+  done < <(list_module_file_roots "$module_dir")
+  for_each_manifest_dep "$module_dir" describe_module_file
+}
+
+deploy_dotfiles_module() {
+  local module_dir="$1"
+  local files_dir="${module_dir}/files"
+  local rel
+  update_module_submodules "$module_dir"
+  while IFS= read -r rel; do
+    link_item "${files_dir}/${rel}" "$rel"
+  done < <(list_module_file_roots "$module_dir")
+  for_each_manifest_dep "$module_dir" deploy_module_file
+}
+
+verify_dotfiles_module() {
+  local module_dir="$1"
+  local files_dir="${module_dir}/files"
+  local rel failed=0
+  while IFS= read -r rel; do
+    verify_link "${files_dir}/${rel}" "$rel" || failed=1
+  done < <(list_module_file_roots "$module_dir")
+  local manifest source target rest resolved_source resolved_target prefix suffix i
+  local sources=()
+  local targets=()
+  manifest="$(module_dep_manifest "$module_dir" || true)"
+  if [ -n "$manifest" ]; then
+    while IFS=$'\t' read -r source target rest || [ -n "$source" ]; do
+      case "$source" in ''|\#*) continue ;; esac
+      [ -n "${target:-}" ] || die "$(msg "dep manifest 缺少目标路径：%s" "dep manifest is missing target path: %s" "$manifest")"
+      resolved_source="${module_dir}/${source}"
+      resolved_target="${DOTFILES_HOME}/${target}"
+      for i in "${!targets[@]}"; do
+        prefix="${targets[$i]}"
+        case "$target" in
+          "$prefix"/*)
+            suffix="${target#"$prefix"/}"
+            resolved_target="${sources[$i]}/${suffix}"
+            ;;
+        esac
+      done
+      verify_link_at "$resolved_source" "$target" "$resolved_target" || failed=1
+      sources+=("$resolved_source")
+      targets+=("$target")
+    done < "$manifest"
+  fi
+  return "$failed"
+}
+
 run_module_phase() {
   local module="$1"
   local phase="$2"
-  local script="${DOTFILES_ROOT}/modules/${module}/deploy.sh"
+  local module_dir="${DOTFILES_ROOT}/modules/${module}"
 
-  if [ ! -x "$script" ]; then
+  if [ ! -d "$module_dir" ]; then
     if is_en; then
-      die "module script is missing or not executable: ${script}"
+      die "module does not exist: ${module}"
     else
-      die "模块脚本不存在或不可执行：${script}"
+      die "模块不存在：${module}"
     fi
   fi
-  "$script" "$phase"
+
+  case "$phase" in
+    -h|--help|help)
+      msg_line "用法：%s {describe|deploy|verify|help} [--en]" "Usage: %s {describe|deploy|verify|help} [--en]" "$module"
+      ;;
+    describe)
+      describe_dotfiles_module "$module_dir"
+      ;;
+    deploy)
+      deploy_dotfiles_module "$module_dir"
+      ;;
+    verify)
+      verify_dotfiles_module "$module_dir"
+      ;;
+    *)
+      if is_en; then die "usage: ${module} {describe|deploy|verify|help}"; else die "用法：${module} {describe|deploy|verify|help}"; fi
+      ;;
+  esac
 }
