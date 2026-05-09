@@ -7,6 +7,9 @@
 - `install.sh`：Linux / macOS 的一键部署入口。
 - `install.ps1`：Windows PowerShell 的一键部署入口。
 - `install.bat`：Windows cmd 的包装入口，会调用 `install.ps1`。
+- `add-module.sh`：Linux / macOS 的新增模块入口。
+- `add-module.ps1`：Windows PowerShell 的新增模块入口。
+- `add-module.bat`：Windows cmd 的新增模块包装入口。
 - `modules/<name>/files`：某个软件模块实际管理的配置文件。
 - `modules/<name>/deploy.sh`：该模块在 POSIX 终端下的部署脚本。
 - `modules/<name>/deploy.ps1`：该模块在 PowerShell 下的部署脚本。
@@ -94,6 +97,7 @@ POSIX：
 
 ```sh
 ./install.sh --help
+./add-module.sh --help
 ./prepare.sh --help
 modules/zsh/deploy.sh --help
 ```
@@ -102,6 +106,8 @@ PowerShell / cmd：
 
 ```powershell
 .\install.ps1 --help
+.\add-module.ps1 --help
+.\add-module.bat /?
 .\install.bat /?
 .\modules\zsh\deploy.ps1 --help
 ```
@@ -118,6 +124,69 @@ PowerShell / cmd：
 - `zsh`：zsh、oh-my-zsh、主题和插件配置。
 
 新增软件配置时，推荐创建 `modules/<software>/`，并把该软件相关内容集中放在这个目录下。
+
+## ➕ 新增模块
+
+可以使用新增模块脚本把本机已有配置纳入仓库管理：
+
+Linux / macOS：
+
+```sh
+./add-module.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\add-module.ps1
+```
+
+Windows cmd：
+
+```bat
+add-module.bat
+```
+
+新增流程会先要求输入模块名称，例如 `nvim`、`git`、`alacritty`，然后进入交互式路径选择界面：
+
+- `Space`：选择或取消选择文件/目录。
+- `Enter`：确认选择并开始添加。
+- `上/下` 或 `k/j`：移动光标。
+- `右` 或 `l`：进入目录。
+- `左` 或 `h`：返回父目录。
+
+脚本会按路径类型自动处理：
+
+- 普通文件或目录：按 HOME 相对路径复制到 `modules/<name>/files`。
+- 本地 Git 仓库目录：读取该仓库 remote，并作为 submodule 添加到根目录 `dep/`。
+
+例如选择 `~/.config/nvim` 时，会保存为：
+
+```text
+modules/nvim/files/.config/nvim
+```
+
+部署时仍会链接回：
+
+```text
+~/.config/nvim
+```
+
+常用参数：
+
+```sh
+./add-module.sh --module nvim
+./add-module.sh --dry-run
+./add-module.sh --en
+./add-module.sh --help
+```
+
+```powershell
+.\add-module.ps1 --module nvim
+.\add-module.ps1 --dry-run
+.\add-module.ps1 --en
+.\add-module.ps1 --help
+```
 
 ## 🔁 兼容入口
 
