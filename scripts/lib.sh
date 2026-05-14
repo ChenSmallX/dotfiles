@@ -326,22 +326,72 @@ module_has_deps() {
   [ -n "$manifest" ]
 }
 
-update_module_submodules() {
-  local module_dir="$1"
-  module_has_deps "$module_dir" || return 0
-  local dep_dir="${module_dir}/dep"
-  local dep_rel
-  dep_rel="$(module_rel_path "$dep_dir")"
+gitmodule_url_for() {
+  local rel="$1"
+  git -C "$DOTFILES_ROOT" config -f "${DOTFILES_ROOT}/.gitmodules" --get "submodule.${rel}.url" 2>/dev/null || true
+}
 
-  if ! git -C "$DOTFILES_ROOT" ls-files --stage -- "$dep_rel" | grep -q '160000'; then
-    if [ -d "$dep_dir" ]; then
-      msg_line "模块依赖目录已存在，跳过 submodule 初始化。" "Module dependency directory already exists; skipping submodule initialization."
+path_has_entries() {
+  local path="$1"
+  [ -d "$path" ] || return 1
+  [ -n "$(command ls -A "$path" 2>/dev/null)" ]
+}
+
+update_one_module_dep() {
+  local source="$1"
+  local target="$2"
+  local module_dir="$3"
+  local source_path="${module_dir}/${source}"
+  local source_rel url
+  source_rel="$(module_rel_path "$source_path")"
+
+  if git -C "$DOTFILES_ROOT" ls-files --stage -- "$source_rel" | grep -q '160000'; then
+    if [ "$DOTFILES_DRY_RUN" = "1" ]; then
+      msg_line "  将初始化 submodule：%s" "  would initialize submodule: %s" "$source_rel"
       return 0
+    fi
+    msg_line "  正在初始化 submodule：%s" "  initializing submodule: %s" "$source_rel"
+    git -C "$DOTFILES_ROOT" submodule update --init --recursive -- "$source_rel"
+    return 0
+  fi
+
+  if path_has_entries "$source_path"; then
+    msg_line "  依赖已存在：%s" "  dependency already exists: %s" "$source_rel"
+    return 0
+  fi
+
+  url="$(gitmodule_url_for "$source_rel")"
+  if [ -z "$url" ]; then
+    if is_en; then
+      die "dependency is missing and no .gitmodules URL was found for ${source_rel}"
+    else
+      die "依赖缺失，且 .gitmodules 中未找到 URL：${source_rel}"
     fi
   fi
 
-  msg_line "正在获取模块 submodule 依赖..." "Fetching module submodule dependencies..."
-  git -C "$DOTFILES_ROOT" submodule update --init --recursive -- "$dep_rel"
+  if [ "$DOTFILES_DRY_RUN" = "1" ]; then
+    msg_line "  将克隆依赖：%s -> %s" "  would clone dependency: %s -> %s" "$url" "$source_rel"
+    return 0
+  fi
+
+  msg_line "  正在克隆依赖：%s" "  cloning dependency: %s" "$source_rel"
+  mkdir -p "$(dirname "$source_path")"
+  git clone --recursive "$url" "$source_path"
+}
+
+update_module_submodules() {
+  local module_dir="$1"
+  local manifest
+  manifest="$(module_dep_manifest "$module_dir" || true)"
+  [ -n "$manifest" ] || return 0
+
+  msg_line "正在获取模块依赖..." "Fetching module dependencies..."
+  local source target rest
+  while IFS=$'\t' read -r source target rest || [ -n "$source" ]; do
+    case "$source" in ''|\#*) continue ;; esac
+    [ -n "${target:-}" ] || die "$(msg "dep manifest 缺少目标路径：%s" "dep manifest is missing target path: %s" "$manifest")"
+    update_one_module_dep "$source" "$target" "$module_dir"
+  done < "$manifest"
 }
 
 for_each_manifest_dep() {

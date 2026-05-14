@@ -321,15 +321,42 @@ function Update-DotfilesModuleSubmodules {
     }
 
     $root = Get-DotfilesRoot
-    $depPath = Join-Path $ModuleDir "dep"
-    $relative = (Resolve-Path -LiteralPath $depPath).Path.Substring($root.Length).TrimStart([char[]]@('\', '/'))
-    $tracked = (& git -C $root ls-files --stage -- $relative) -match "160000"
-    if (-not $tracked -and (Test-Path -LiteralPath $depPath -PathType Container)) {
-        Write-DotfilesMessage "模块依赖目录已存在，跳过 submodule 初始化。" "Module dependency directory already exists; skipping submodule initialization."
-        return
+    Write-DotfilesMessage "正在获取模块依赖..." "Fetching module dependencies..."
+
+    foreach ($dep in Get-DotfilesModuleDeps $ModuleDir) {
+        $sourcePath = $dep.Source
+        $relative = $sourcePath.Substring($root.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+        $tracked = (& git -C $root ls-files --stage -- $relative) -match "160000"
+
+        if ($tracked) {
+            if (Test-DotfilesDryRun) {
+                Write-DotfilesMessage "  将初始化 submodule：$relative" "  would initialize submodule: $relative"
+                continue
+            }
+            Write-DotfilesMessage "  正在初始化 submodule：$relative" "  initializing submodule: $relative"
+            git -C $root submodule update --init --recursive -- $relative
+            continue
+        }
+
+        if ((Test-Path -LiteralPath $sourcePath -PathType Container) -and @(Get-ChildItem -LiteralPath $sourcePath -Force).Count -gt 0) {
+            Write-DotfilesMessage "  依赖已存在：$relative" "  dependency already exists: $relative"
+            continue
+        }
+
+        $url = & git -C $root config -f (Join-Path $root ".gitmodules") --get "submodule.$relative.url"
+        if (-not $url) {
+            throw (Get-DotfilesMessage "依赖缺失，且 .gitmodules 中未找到 URL：$relative" "dependency is missing and no .gitmodules URL was found for $relative")
+        }
+
+        if (Test-DotfilesDryRun) {
+            Write-DotfilesMessage "  将克隆依赖：$url -> $relative" "  would clone dependency: $url -> $relative"
+            continue
+        }
+
+        Write-DotfilesMessage "  正在克隆依赖：$relative" "  cloning dependency: $relative"
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sourcePath) | Out-Null
+        git clone --recursive $url $sourcePath
     }
-    Write-DotfilesMessage "正在获取模块 submodule 依赖..." "Fetching module submodule dependencies..."
-    git -C $root submodule update --init --recursive -- $relative
 }
 
 function Invoke-DotfilesModulePhase {
