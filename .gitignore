@@ -1,6 +1,1 @@
 env/.oh-my-zsh
-modules/zsh/dep/oh-my-zsh
-modules/zsh/dep/powerlevel10k
-modules/zsh/dep/zsh-autosuggestions
-modules/zsh/dep/zsh-completions
-modules/zsh/dep/zsh-syntax-highlighting
